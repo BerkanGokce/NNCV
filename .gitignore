@@ -175,6 +175,3 @@ cython_debug/
 
 # ignore other large archives
 *.tar
-
-# Ignore ID Keys
-.env
