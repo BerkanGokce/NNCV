@@ -11,5 +11,3 @@ python3 train.py \
     --resize-w 1024 \
     --pretrained-backbone \
     --experiment-id "deeplabv3-resnet50-imagenetinit"
-
-
