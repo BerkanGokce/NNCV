@@ -1,16 +1,16 @@
+# DeepLabv3 Fast
 from pathlib import Path
 
-import torch
-import torch.nn as nn
 import numpy as np
+import torch
 from PIL import Image
 from torchvision.transforms.v2 import (
     Compose,
-    ToImage,
+    InterpolationMode,
+    Normalize,
     Resize,
     ToDtype,
-    Normalize,
-    InterpolationMode,
+    ToImage,
 )
 
 from model import Model
@@ -28,50 +28,29 @@ def preprocess(img: Image.Image) -> torch.Tensor:
         ToDtype(dtype=torch.float32, scale=True),
         Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
     ])
-
-    img = transform(img)
-    img = img.unsqueeze(0)
-    return img
+    return transform(img).unsqueeze(0)
 
 
-def postprocess(pred: torch.Tensor, original_shape: tuple) -> np.ndarray:
-    pred_soft = nn.Softmax(dim=1)(pred)
-    pred_max = torch.argmax(pred_soft, dim=1, keepdim=True)
-
-    prediction = Resize(
-        size=original_shape,
-        interpolation=InterpolationMode.NEAREST
-    )(pred_max)
-
-    prediction_numpy = prediction.cpu().detach().numpy()
-    prediction_numpy = prediction_numpy.squeeze()
-
-    return prediction_numpy
+def postprocess(pred: torch.Tensor, original_shape: tuple[int, int]) -> np.ndarray:
+    pred_labels = pred.argmax(dim=1, keepdim=True).to(torch.uint8)
+    pred_labels = Resize(size=original_shape, interpolation=InterpolationMode.NEAREST)(pred_labels)
+    return pred_labels.squeeze(0).squeeze(0).cpu().numpy()
 
 
-def main():
+def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = Model(
         in_channels=3,
         n_classes=19,
-        pretrained_backbone=False,  # at inference we load trained weights, not backbone init
+        pretrained_backbone=False,
     )
 
-    state_dict = torch.load(
-        MODEL_PATH,
-        map_location=device,
-        weights_only=True,
-    )
-
-    model.load_state_dict(
-        state_dict,
-        strict=True,
-    )
-
+    state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)
+    model.load_state_dict(state_dict, strict=True)
     model.eval().to(device)
 
-    image_files = list(Path(IMAGE_DIR).glob("*.png"))
+    image_files = sorted(Path(IMAGE_DIR).glob("*.png"))
     print(f"Found {len(image_files)} images to process.")
 
     with torch.no_grad():
@@ -85,7 +64,6 @@ def main():
 
             out_path = Path(OUTPUT_DIR) / img_path.name
             out_path.parent.mkdir(parents=True, exist_ok=True)
-
             Image.fromarray(seg_pred.astype(np.uint8)).save(out_path)
 
 
