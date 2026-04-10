@@ -175,3 +175,6 @@ cython_debug/
 
 # ignore other large archives
 *.tar
+
+*.pt
+save_models/

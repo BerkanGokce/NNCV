@@ -1,4 +1,4 @@
-# DeepLabv3-Resnet50-Peak Performance
+# DeepLabv3-Resnet50-Peak Performance ajsaks
 """
 Training script for DeepLabV3-ResNet50 on Cityscapes.
 
@@ -10,7 +10,6 @@ Design goals:
   SGD + momentum + polynomial learning-rate decay + random scale/crop/flip.
 """
 
-import math
 import os
 import random
 from argparse import ArgumentParser
@@ -19,7 +18,6 @@ from typing import Dict, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import wandb
 from PIL import Image, ImageOps
 from torch.optim import SGD
@@ -102,7 +100,6 @@ class CityscapesSegmentation(Dataset):
         return image.crop(box), target.crop(box)
 
     def _center_crop_or_resize(self, image: Image.Image, target: Image.Image):
-        # Validation path: resize so the shorter side is at least crop size, then center-crop.
         scale = max(self.crop_h / image.height, self.crop_w / image.width)
         new_h = int(round(image.height * scale))
         new_w = int(round(image.width * scale))
@@ -229,7 +226,6 @@ def set_seed(seed: int):
 
 
 def create_optimizer(model: nn.Module, lr: float, momentum: float, weight_decay: float):
-    # Standard segmentation setup: lower LR for backbone, higher LR for classifier/aux head.
     backbone_params = []
     classifier_params = []
 
@@ -298,11 +294,16 @@ def main(args):
     )
     valid_dataloader = DataLoader(
         valid_dataset,
-        batch_size=max(1, args.batch_size // 2),
+        batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
         pin_memory=True,
     )
+
+    print("Train dataset size:", len(train_dataset))
+    print("Valid dataset size:", len(valid_dataset))
+    print("Train batches per epoch:", len(train_dataloader))
+    print("Valid batches per epoch:", len(valid_dataloader))
 
     model = Model(in_channels=3, n_classes=19, pretrained_backbone=True).to(device)
     criterion = nn.CrossEntropyLoss(ignore_index=255)
@@ -351,6 +352,9 @@ def main(args):
             losses = []
             dice_scores = []
 
+            vis_predictions = []
+            vis_labels = []
+
             for i, (images, labels) in enumerate(valid_dataloader):
                 images = images.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True).long()
@@ -365,26 +369,36 @@ def main(args):
                 preds = outputs["out"].argmax(dim=1)
                 dice_scores.append(compute_mean_dice(preds, labels, num_classes=19, ignore_index=255))
 
-                if i == 0:
-                    predictions = preds.unsqueeze(1)
-                    label_vis = labels.unsqueeze(1)
+                # collect first 16 validation samples for a 4x4 grid
+                if len(vis_predictions) < 16:
+                    remaining = 16 - len(vis_predictions)
 
-                    predictions = convert_train_id_to_color(predictions.cpu())
-                    label_vis = convert_train_id_to_color(label_vis.cpu())
+                    pred_cpu = preds[:remaining].unsqueeze(1).cpu()
+                    label_cpu = labels[:remaining].unsqueeze(1).cpu()
 
-                    predictions_img = make_grid(predictions, nrow=min(4, predictions.shape[0]))
-                    labels_img = make_grid(label_vis, nrow=min(4, label_vis.shape[0]))
+                    vis_predictions.extend([p for p in pred_cpu])
+                    vis_labels.extend([l for l in label_cpu])
 
-                    predictions_img = predictions_img.permute(1, 2, 0).numpy()
-                    labels_img = labels_img.permute(1, 2, 0).numpy()
+            if len(vis_predictions) > 0:
+                predictions = torch.stack(vis_predictions, dim=0)
+                label_vis = torch.stack(vis_labels, dim=0)
 
-                    wandb.log(
-                        {
-                            "predictions": [wandb.Image(predictions_img)],
-                            "labels": [wandb.Image(labels_img)],
-                        },
-                        step=global_step,
-                    )
+                predictions = convert_train_id_to_color(predictions)
+                label_vis = convert_train_id_to_color(label_vis)
+
+                predictions_img = make_grid(predictions, nrow=4)
+                labels_img = make_grid(label_vis, nrow=4)
+
+                predictions_img = predictions_img.permute(1, 2, 0).numpy()
+                labels_img = labels_img.permute(1, 2, 0).numpy()
+
+                wandb.log(
+                    {
+                        "predictions": [wandb.Image(predictions_img)],
+                        "labels": [wandb.Image(labels_img)],
+                    },
+                    step=global_step,
+                )
 
             valid_loss = sum(losses) / max(len(losses), 1)
             valid_mean_dice = sum(dice_scores) / max(len(dice_scores), 1)
