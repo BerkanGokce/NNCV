@@ -1,4 +1,4 @@
-# BiSeNetV2 - Efficiency
+# ENet - Efficiency
 
 import os
 import random
@@ -172,25 +172,24 @@ def compute_mean_dice(preds: torch.Tensor, targets: torch.Tensor, num_classes: i
 # CLI
 # -----------------------------
 def get_args_parser():
-    parser = ArgumentParser("Training script for a PyTorch BiSeNetV2 model")
+    parser = ArgumentParser("Training script for a PyTorch ENet model")
     parser.add_argument("--data-dir", type=str, default="./data/cityscapes", help="Path to the training data")
     parser.add_argument("--batch-size", type=int, default=16, help="Training batch size")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=0.001, help="Initial learning rate")
+    parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate")
     parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
     parser.add_argument("--momentum", type=float, default=0.9, help="Unused for AdamW, kept for CLI compatibility")
     parser.add_argument("--num-workers", type=int, default=10, help="Number of workers for data loaders")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--resize-h", type=int, default=384, help="Training/validation crop height")
-    parser.add_argument("--resize-w", type=int, default=768, help="Training/validation crop width")
+    parser.add_argument("--resize-h", type=int, default=512, help="Training/validation crop height")
+    parser.add_argument("--resize-w", type=int, default=1024, help="Training/validation crop width")
     parser.add_argument("--scale-min", type=float, default=0.5, help="Minimum random scaling factor")
     parser.add_argument("--scale-max", type=float, default=2.0, help="Maximum random scaling factor")
     parser.add_argument("--hflip-prob", type=float, default=0.5, help="Horizontal flip probability")
-    parser.add_argument("--aux-weight", type=float, default=0.4, help="Weight for each auxiliary loss")
     parser.add_argument(
         "--experiment-id",
         type=str,
-        default="bisenetv2-efficiency",
+        default="enet-efficiency",
         help="Experiment ID for Weights & Biases",
     )
     return parser
@@ -281,15 +280,7 @@ def main(args):
 
             with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs: Dict[str, torch.Tensor] = model(images)
-
-                main_loss = criterion(outputs["out"], labels)
-                aux_loss = (
-                    criterion(outputs["aux2"], labels)
-                    + criterion(outputs["aux3"], labels)
-                    + criterion(outputs["aux4"], labels)
-                    + criterion(outputs["aux5_4"], labels)
-                )
-                loss = main_loss + args.aux_weight * aux_loss
+                loss = criterion(outputs["out"], labels)
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -320,15 +311,7 @@ def main(args):
 
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     outputs: Dict[str, torch.Tensor] = model(images)
-
-                    main_loss = criterion(outputs["out"], labels)
-                    aux_loss = (
-                        criterion(outputs["aux2"], labels)
-                        + criterion(outputs["aux3"], labels)
-                        + criterion(outputs["aux4"], labels)
-                        + criterion(outputs["aux5_4"], labels)
-                    )
-                    loss = main_loss + args.aux_weight * aux_loss
+                    loss = criterion(outputs["out"], labels)
 
                 losses.append(float(loss.item()))
                 preds = outputs["out"].argmax(dim=1)

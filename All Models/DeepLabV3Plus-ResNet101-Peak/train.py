@@ -1,4 +1,14 @@
-# BiSeNetV2 - Efficiency
+# DeepLabv3Plus-Resnet101-Peak Performance
+"""
+Training script for manual DeepLabV3+-ResNet101 on Cityscapes.
+
+Design goals:
+- Keep the overall structure similar to your current DeepLab training script.
+- Preserve the main W&B logging keys: train_loss, valid_loss, valid_mean_dice,
+  learning_rate, epoch, predictions, labels.
+- Use a strong and standard Cityscapes training recipe:
+  SGD + momentum + polynomial learning-rate decay + random scale/crop/flip.
+"""
 
 import os
 import random
@@ -10,7 +20,7 @@ import torch
 import torch.nn as nn
 import wandb
 from PIL import Image, ImageOps
-from torch.optim import AdamW
+from torch.optim import SGD
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import Cityscapes
 from torchvision.utils import make_grid
@@ -168,31 +178,40 @@ def compute_mean_dice(preds: torch.Tensor, targets: torch.Tensor, num_classes: i
     return float(sum(dices) / len(dices))
 
 
+class PolyLRScheduler:
+    def __init__(self, optimizer: torch.optim.Optimizer, total_steps: int, power: float = 0.9, min_lr: float = 1e-6):
+        self.optimizer = optimizer
+        self.total_steps = max(1, total_steps)
+        self.power = power
+        self.min_lr = min_lr
+        self.base_lrs = [group["lr"] for group in optimizer.param_groups]
+
+    def step(self, current_step: int):
+        factor = (1.0 - min(current_step, self.total_steps) / self.total_steps) ** self.power
+        for base_lr, group in zip(self.base_lrs, self.optimizer.param_groups):
+            group["lr"] = max(base_lr * factor, self.min_lr)
+
+
 # -----------------------------
 # CLI
 # -----------------------------
 def get_args_parser():
-    parser = ArgumentParser("Training script for a PyTorch BiSeNetV2 model")
+    parser = ArgumentParser("Training script for a PyTorch DeepLabV3Plus-ResNet101 model")
     parser.add_argument("--data-dir", type=str, default="./data/cityscapes", help="Path to the training data")
-    parser.add_argument("--batch-size", type=int, default=16, help="Training batch size")
+    parser.add_argument("--batch-size", type=int, default=4, help="Training batch size")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=0.001, help="Initial learning rate")
-    parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay")
-    parser.add_argument("--momentum", type=float, default=0.9, help="Unused for AdamW, kept for CLI compatibility")
+    parser.add_argument("--lr", type=float, default=0.01, help="Initial learning rate")
+    parser.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay for SGD")
+    parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD")
     parser.add_argument("--num-workers", type=int, default=10, help="Number of workers for data loaders")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--resize-h", type=int, default=384, help="Training/validation crop height")
-    parser.add_argument("--resize-w", type=int, default=768, help="Training/validation crop width")
+    parser.add_argument("--resize-h", type=int, default=512, help="Training/validation crop height")
+    parser.add_argument("--resize-w", type=int, default=1024, help="Training/validation crop width")
     parser.add_argument("--scale-min", type=float, default=0.5, help="Minimum random scaling factor")
     parser.add_argument("--scale-max", type=float, default=2.0, help="Maximum random scaling factor")
     parser.add_argument("--hflip-prob", type=float, default=0.5, help="Horizontal flip probability")
-    parser.add_argument("--aux-weight", type=float, default=0.4, help="Weight for each auxiliary loss")
-    parser.add_argument(
-        "--experiment-id",
-        type=str,
-        default="bisenetv2-efficiency",
-        help="Experiment ID for Weights & Biases",
-    )
+    parser.add_argument("--aux-loss-weight", type=float, default=0.4, help="Weight for auxiliary loss")
+    parser.add_argument("--experiment-id", type=str, default="deeplabv3plus-resnet101-peak", help="Experiment ID for Weights & Biases")
     return parser
 
 
@@ -204,6 +223,31 @@ def set_seed(seed: int):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def create_optimizer(model: nn.Module, lr: float, momentum: float, weight_decay: float):
+    backbone_params = []
+    classifier_params = []
+
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if "classifier" in name or "aux_classifier" in name:
+            classifier_params.append(param)
+        else:
+            backbone_params.append(param)
+
+    optimizer = SGD(
+        [
+            {"params": backbone_params, "lr": lr},
+            {"params": classifier_params, "lr": lr * 10.0},
+        ],
+        lr=lr,
+        momentum=momentum,
+        weight_decay=weight_decay,
+        nesterov=False,
+    )
+    return optimizer
 
 
 def main(args):
@@ -261,9 +305,11 @@ def main(args):
     print("Train batches per epoch:", len(train_dataloader))
     print("Valid batches per epoch:", len(valid_dataloader))
 
-    model = Model(in_channels=3, n_classes=19, pretrained_backbone=False).to(device)
+    model = Model(in_channels=3, n_classes=19, pretrained_backbone=True).to(device)
     criterion = nn.CrossEntropyLoss(ignore_index=255)
-    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = create_optimizer(model, args.lr, args.momentum, args.weight_decay)
+    total_steps = args.epochs * len(train_dataloader)
+    scheduler = PolyLRScheduler(optimizer, total_steps=total_steps, power=0.9)
 
     best_valid_loss = float("inf")
     current_best_model_path = None
@@ -273,7 +319,7 @@ def main(args):
         print(f"Epoch {epoch + 1:04}/{args.epochs:04}")
 
         model.train()
-        for images, labels in train_dataloader:
+        for i, (images, labels) in enumerate(train_dataloader):
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True).long()
 
@@ -281,21 +327,16 @@ def main(args):
 
             with torch.amp.autocast("cuda", enabled=use_amp):
                 outputs: Dict[str, torch.Tensor] = model(images)
-
                 main_loss = criterion(outputs["out"], labels)
-                aux_loss = (
-                    criterion(outputs["aux2"], labels)
-                    + criterion(outputs["aux3"], labels)
-                    + criterion(outputs["aux4"], labels)
-                    + criterion(outputs["aux5_4"], labels)
-                )
-                loss = main_loss + args.aux_weight * aux_loss
+                aux_loss = criterion(outputs["aux"], labels) if "aux" in outputs and outputs["aux"] is not None else 0.0
+                loss = main_loss + args.aux_loss_weight * aux_loss
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
 
             global_step += 1
+            scheduler.step(global_step)
 
             wandb.log(
                 {
@@ -314,21 +355,15 @@ def main(args):
             vis_predictions = []
             vis_labels = []
 
-            for images, labels in valid_dataloader:
+            for i, (images, labels) in enumerate(valid_dataloader):
                 images = images.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True).long()
 
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     outputs: Dict[str, torch.Tensor] = model(images)
-
                     main_loss = criterion(outputs["out"], labels)
-                    aux_loss = (
-                        criterion(outputs["aux2"], labels)
-                        + criterion(outputs["aux3"], labels)
-                        + criterion(outputs["aux4"], labels)
-                        + criterion(outputs["aux5_4"], labels)
-                    )
-                    loss = main_loss + args.aux_weight * aux_loss
+                    aux_loss = criterion(outputs["aux"], labels) if "aux" in outputs and outputs["aux"] is not None else 0.0
+                    loss = main_loss + args.aux_loss_weight * aux_loss
 
                 losses.append(float(loss.item()))
                 preds = outputs["out"].argmax(dim=1)

@@ -1,5 +1,10 @@
-# BiSeNetV2 - Efficiency
+# DeepLabv3Plus-Resnet101-Peak Performance
+"""
+Prediction pipeline for manual DeepLabV3+-ResNet101.
 
+This file is intended for challenge submission. It keeps the same fixed input/output
+paths as the provided baseline and loads weights from /app/model.pt.
+"""
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +42,7 @@ def postprocess(pred: torch.Tensor, original_shape: tuple) -> np.ndarray:
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = Model(in_channels=3, n_classes=19, pretrained_backbone=False)
+    model = Model()
     state_dict = torch.load(MODEL_PATH, map_location=device, weights_only=True)
     model.load_state_dict(state_dict, strict=True)
     model.eval().to(device)

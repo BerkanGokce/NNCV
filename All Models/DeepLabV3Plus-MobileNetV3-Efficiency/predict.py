@@ -1,4 +1,4 @@
-# BiSeNetV2 - Efficiency
+# DeepLabv3Plus-MobileNet_V3-Efficiency
 
 from pathlib import Path
 

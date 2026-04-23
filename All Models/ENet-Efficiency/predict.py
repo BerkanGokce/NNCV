@@ -1,4 +1,4 @@
-# BiSeNetV2 - Efficiency
+# ENet - Efficiency
 
 from pathlib import Path
 
