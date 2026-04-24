@@ -110,3 +110,31 @@ http://131.155.126.249:5003/
 |------------------------|--------------------------------|
 | Berkan_Efficiency_v0   | UNet (efficiency baseline)     |
 | Berkan_Efficiency_v2   | ENet (Highest Efficiency)                          |
+
+
+## Trained Model Weights
+
+Due to file size limitations, the trained model weights (.pt files) are not included directly in this repository. They are available via Google Drive:
+
+[Download all trained models](https://drive.google.com/drive/folders/1Xo7UmpkR7ZRilUFocdES78TjcQ51rKRq?usp=drive_link)
+
+The folder contains the following models:
+
+| Model | Description |
+|------|------------|
+| DeepLabV3-ResNet50-PeakPerformance-best-model.pt | Additional peak-performance submission |
+| DeepLabV3-ResNet101-PeakPerformance-best-model.pt | Best peak-performance model |
+| ENet-Efficiency-best-model.pt | Most efficient model |
+| UNet-Benchmark-best-model.pt | Baseline model |
+
+To use a trained model:
+
+1. Download the desired `.pt` file  
+2. Place it inside the `HPC` folder along with the other files of the model (`main.sh`, `train.py`, `model.py`, and `predict.py`)
+3. Rename it to:
+
+```
+model.pt
+```
+
+4. Run inference or create submission as described above
