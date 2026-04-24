@@ -86,7 +86,7 @@ When the training ends, find your best trained model in the `checkpoints` folder
 To create a submission for the evaluation server, after placing the trained model in the **HPC** folder and naming it `model.pt`, run the following commands from the NNCV root directory:
 
 ```
-docker build -t nncv-submission:latest -f "HPC Train/Dockerfile" "HPC Train"
+docker build -t nncv-submission:latest -f "HPC/Dockerfile" "HPC"
 docker save -o nncv_submission.tar nncv-submission:latest
 ```
 
