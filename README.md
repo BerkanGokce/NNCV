@@ -102,6 +102,7 @@ http://131.155.126.249:5001/
 | Berkan_baseline_sub1 | UNet (peak-performance baseline)        |
 | Berkan_Peak_v1       | DeepLabV3 ResNet50                      |
 | Berkan_Peak_v2       | DeepLabV3 ResNet101 (Highest Performance) |
+| Berkan_Peak_v3       | DeepLabV3Plus ResNet101                 |
 
 ## Efficiency Benchmark
 http://131.155.126.249:5003/
@@ -109,7 +110,9 @@ http://131.155.126.249:5003/
 | Team Name               | Model                          |
 |------------------------|--------------------------------|
 | Berkan_Efficiency_v0   | UNet (efficiency baseline)     |
-| Berkan_Efficiency_v2   | ENet (Highest Efficiency)                          |
+| Berkan_Efficiency_v1   | DeeplabV3Plus MobileNetV3      |
+| Berkan_Efficiency_v2   | ENet (Highest Efficiency)      |
+| Berkan_Efficiency_v3   | BisENetV2                      |
 
 
 ## Trained Model Weights
@@ -122,10 +125,14 @@ The folder contains the following models:
 
 | Model | Description |
 |------|------------|
-| DeepLabV3-ResNet50-PeakPerformance-best-model.pt | Additional peak-performance submission |
-| DeepLabV3-ResNet101-PeakPerformance-best-model.pt | Best peak-performance model |
-| ENet-Efficiency-best-model.pt | Most efficient model |
 | UNet-Benchmark-best-model.pt | Baseline model |
+| DeepLabV3-ResNet101-PeakPerformance-best-model.pt | Best peak-performance model |
+| DeepLabV3-ResNet50-PeakPerformance-best-model.pt | Additional peak-performance submission |
+| DeepLabV3Plus-ResNet101-PeakPerformance-best-model.pt | Additional peak-performance submission |
+| ENet-Efficiency-best-model.pt | Most efficient model |
+| BisENetV2-Efficiency-best-model.pt | Additional efficiency submission |
+| DeeplabV3Plus-MobileNetV3-Efficiency-best-model.pt | Additional efficiency submission |
+
 
 To use a trained model:
 
